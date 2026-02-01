@@ -7,7 +7,6 @@ import {
   Download, 
   Play, 
   User, 
-  Server, 
   MessageSquare, 
   StickyNote, 
   RefreshCw, 
@@ -18,7 +17,13 @@ import {
   ChevronDown,
   HelpCircle,
   X,
-  Palette
+  Palette,
+  Power,
+  Zap,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  RotateCcw
 } from 'lucide-react';
 import mermaid from 'mermaid';
 import { Participant, DiagramStep, DiagramState, ArrowType, StepType } from './types';
@@ -59,6 +64,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [showHelp, setShowHelp] = useState(false);
   const [activeColorPicker, setActiveColorPicker] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   // Generate Mermaid Syntax
   useEffect(() => {
@@ -110,19 +116,36 @@ const App: React.FC = () => {
     setMermaidCode(code);
   }, [state]);
 
-  // Render SVG Preview
+  // Render SVG Preview with Auto-Closing Logic
   useEffect(() => {
     const renderDiagram = async () => {
       if (!mermaidCode) return;
       try {
-        const { svg } = await mermaid.render('mermaid-svg', mermaidCode);
+        // Robust rendering: automatically close open blocks for the preview
+        let codeToRender = mermaidCode;
+        
+        // Count unclosed blocks (loop, alt, opt)
+        // We use a simplified regex count as steps are structured
+        const openBlocks = (mermaidCode.match(/\b(loop|alt|opt)\b/g) || []).length;
+        const closedBlocks = (mermaidCode.match(/\bend\b/g) || []).length;
+        
+        // Compensate for participant boxes which also use 'end'
+        const boxCount = state.participants.filter(p => p.color).length;
+        const actualClosedBlocks = closedBlocks - boxCount;
+
+        const missingEnds = openBlocks - actualClosedBlocks;
+        if (missingEnds > 0) {
+          codeToRender += '\n' + '  end\n'.repeat(missingEnds);
+        }
+
+        const { svg } = await mermaid.render('mermaid-svg', codeToRender);
         setPreviewSvg(svg);
       } catch (err) {
         console.error('Mermaid render error:', err);
       }
     };
     renderDiagram();
-  }, [mermaidCode]);
+  }, [mermaidCode, state.participants]);
 
   const addParticipant = () => {
     const newP: Participant = {
@@ -200,38 +223,43 @@ const App: React.FC = () => {
     setTimeout(() => setCodeTabCopied(false), 2000);
   };
 
+  const handleZoom = (delta: number) => {
+    setZoomLevel(prev => Math.min(Math.max(0.1, prev + delta), 4));
+  };
+
+  const resetZoom = () => setZoomLevel(1);
+
   return (
-    <div className="flex flex-col h-screen bg-slate-50">
+    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
       {/* Header */}
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm z-10">
+      <header className="bg-white border-b px-6 py-3 flex items-center justify-between shadow-sm z-30">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-lg">
-            <Layout className="text-white w-6 h-6" />
+          <div className="bg-blue-600 p-2 rounded-lg shadow-sm">
+            <Layout className="text-white w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Mermaid Sequence Builder</h1>
-            <p className="text-xs text-slate-500">طراح هوشمند سکوئنس دیاگرام بدون نیاز به کدنویسی</p>
+            <h1 className="text-lg font-bold text-slate-800 leading-tight">Mermaid Sequence</h1>
+            <p className="text-sm text-slate-500 font-medium">طراحی دیاگرام بدون کدنویسی</p>
           </div>
         </div>
 
         <div className="flex gap-2">
           <button 
             onClick={() => setShowHelp(true)}
-            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg transition-colors font-medium border border-slate-200"
-            title="راهنما"
+            className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-600 px-4 py-2 rounded-lg transition-colors font-bold border border-slate-200 text-sm"
           >
             <HelpCircle className="w-4 h-4 text-blue-500" />
-            <span className="hidden sm:inline">راهنما</span>
+            <span>راهنما</span>
           </button>
           <button 
             onClick={copyToClipboard}
-            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg transition-colors font-medium"
+            className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-600 px-4 py-2 rounded-lg transition-colors font-bold border border-slate-200 text-sm"
           >
             {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-            {copied ? 'کپی شد' : 'کپی کد'}
+            <span>{copied ? 'کپی شد' : 'کپی'}</span>
           </button>
           <button 
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-md"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-bold shadow-md text-sm"
             onClick={() => {
               const blob = new Blob([mermaidCode], { type: 'text/plain' });
               const url = URL.createObjectURL(blob);
@@ -242,67 +270,80 @@ const App: React.FC = () => {
             }}
           >
             <Download className="w-4 h-4" />
-            دانلود فایل
+            دانلود
           </button>
         </div>
       </header>
 
-      <main className="flex flex-1 overflow-hidden">
-        {/* Sidebar - Controls */}
-        <div className="w-1/3 bg-white border-l overflow-y-auto p-6 shadow-inner">
+      <main className="flex flex-1 overflow-hidden relative">
+        {/* FIXED TOOL STRIP */}
+        <aside className="w-[68px] bg-white flex flex-col items-center py-3 gap-2 z-20 border-l border-slate-200 shadow-sm overflow-y-auto no-scrollbar">
+          <div className="text-slate-400 text-[10px] font-bold uppercase mb-0.5 tracking-tighter opacity-80">ابزار</div>
+          <ToolAction icon={<MessageSquare />} label="پیام" color="bg-emerald-500" onClick={() => addStep('message')} />
+          <ToolAction icon={<StickyNote />} label="نوت" color="bg-amber-500" onClick={() => addStep('note')} />
+          <ToolAction icon={<RefreshCw />} label="حلقه" color="bg-blue-500" onClick={() => addStep('loop')} />
+          <div className="w-8 h-px bg-slate-100 my-0.5" />
+          <ToolAction icon={<Code />} label="Alt" color="bg-purple-500" onClick={() => addStep('alt')} />
+          <ToolAction icon={<Code />} label="Opt" color="bg-indigo-500" onClick={() => addStep('opt')} />
+          <div className="w-8 h-px bg-slate-100 my-0.5" />
+          <ToolAction icon={<Zap />} label="فعال" color="bg-orange-500" onClick={() => addStep('activate')} />
+          <ToolAction icon={<Power />} label="غیر" color="bg-rose-500" onClick={() => addStep('deactivate')} />
+          <ToolAction icon={<X />} label="پایان" color="bg-slate-400" onClick={() => addStep('end')} />
+        </aside>
+
+        {/* SIDEBAR - Participants and Steps List */}
+        <div className="w-[380px] min-w-[340px] bg-white border-l border-slate-100 overflow-y-auto p-6 shadow-sm">
           <div className="space-y-8">
-            {/* Participants Section */}
             <section>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold flex items-center gap-2 text-slate-700">
-                  <User className="w-5 h-5 text-blue-500" />
+                <h2 className="text-sm font-bold flex items-center gap-2 text-slate-700 uppercase tracking-wider">
+                  <User className="w-4 h-4 text-blue-500" />
                   شرکت‌کنندگان
                 </h2>
                 <button 
                   onClick={addParticipant}
-                  className="p-1 hover:bg-blue-50 text-blue-600 rounded-full transition-colors"
+                  className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors border border-transparent hover:border-blue-100"
                 >
-                  <Plus className="w-6 h-6" />
+                  <Plus className="w-5 h-5" />
                 </button>
               </div>
               <div className="space-y-3">
                 {state.participants.map(p => (
                   <div key={p.id} className="relative">
                     <div 
-                      className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-200"
-                      style={{ borderRight: p.color ? `4px solid ${p.color}` : undefined }}
+                      className="flex gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200 transition-all hover:border-slate-300"
+                      style={{ borderRight: p.color ? `5px solid ${p.color}` : undefined }}
                     >
                       <select 
                         value={p.type} 
                         onChange={(e) => updateParticipant(p.id, p.name, e.target.value as any)}
-                        className="bg-white border text-sm rounded px-1 py-1 outline-none"
+                        className="bg-white border text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer font-bold"
                       >
-                        <option value="participant">Participant</option>
-                        <option value="actor">Actor</option>
+                        <option value="participant">P</option>
+                        <option value="actor">A</option>
                       </select>
                       <input 
                         type="text" 
                         value={p.name}
                         onChange={(e) => updateParticipant(p.id, e.target.value, p.type)}
-                        className="flex-1 bg-white border rounded px-2 py-1 text-sm focus:border-blue-500 outline-none"
-                        placeholder="نام شرکت کننده..."
+                        className="flex-1 bg-white border rounded-lg px-3 py-1.5 text-sm font-bold focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
+                        placeholder="نام..."
                       />
                       <button 
                         onClick={() => setActiveColorPicker(activeColorPicker === p.id ? null : p.id)}
-                        className={`p-1 rounded transition-colors ${p.color ? 'text-blue-600' : 'text-slate-400'} hover:bg-blue-50`}
-                        title="انتخاب ظاهر"
+                        className={`p-2 rounded-lg transition-colors ${p.color ? 'text-blue-600 bg-blue-100' : 'text-slate-400'} hover:bg-blue-50`}
                       >
                         <Palette className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => removeParticipant(p.id)}
-                        className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                     {activeColorPicker === p.id && (
-                      <div className="absolute top-full right-0 mt-1 z-30 bg-white border rounded-xl shadow-xl p-3 grid grid-cols-4 gap-2 animate-in fade-in zoom-in duration-150">
+                      <div className="absolute top-full right-0 mt-2 z-50 bg-white border rounded-2xl shadow-2xl p-4 grid grid-cols-4 gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
                         {PRESET_COLORS.map(color => (
                           <button
                             key={color.value}
@@ -310,12 +351,12 @@ const App: React.FC = () => {
                               updateParticipant(p.id, p.name, p.type, color.value);
                               setActiveColorPicker(null);
                             }}
-                            className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center hover:scale-110 transition-transform"
+                            className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center hover:scale-110 transition-transform shadow-sm"
                             style={{ backgroundColor: color.value || '#fff' }}
                             title={color.name}
                           >
-                            {!color.value && <X className="w-4 h-4 text-slate-400" />}
-                            {p.color === color.value && color.value && <Check className="w-4 h-4 text-slate-600" />}
+                            {!color.value && <X className="w-4 h-4 text-slate-300" />}
+                            {p.color === color.value && color.value && <Check className="w-4 h-4 text-white mix-blend-difference" />}
                           </button>
                         ))}
                       </div>
@@ -325,144 +366,88 @@ const App: React.FC = () => {
               </div>
             </section>
 
-            {/* Step Builder Section */}
-            <section>
-              <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-700">
-                <Play className="w-5 h-5 text-green-500" />
-                افزودن دستور جدید
-              </h2>
-              <div className="grid grid-cols-2 gap-3">
-                <ToolButton icon={<MessageSquare className="w-4 h-4" />} label="پیام" onClick={() => addStep('message')} />
-                <ToolButton icon={<StickyNote className="w-4 h-4" />} label="یادداشت" onClick={() => addStep('note')} />
-                <ToolButton icon={<RefreshCw className="w-4 h-4" />} label="حلقه" onClick={() => addStep('loop')} />
-                <ToolButton icon={<Code className="w-4 h-4" />} label="شرط (Alt)" onClick={() => addStep('alt')} />
-                <ToolButton icon={<Code className="w-4 h-4" />} label="اختیاری (Opt)" onClick={() => addStep('opt')} />
-                <ToolButton icon={<Trash2 className="w-4 h-4" />} label="پایان بلوک" onClick={() => addStep('end')} />
-                <ToolButton icon={<Play className="w-4 h-4" />} label="فعال سازی" onClick={() => addStep('activate')} />
-                <ToolButton icon={<Play className="w-4 h-4 rotate-180" />} label="غیرفعال سازی" onClick={() => addStep('deactivate')} />
-              </div>
-            </section>
-
-            {/* Step List Section */}
-            <section className="pb-8">
-              <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-700">
-                <Layout className="w-5 h-5 text-orange-500" />
+            <section className="pb-12">
+              <h2 className="text-sm font-bold mb-4 flex items-center gap-2 text-slate-700 uppercase tracking-wider">
+                <Layout className="w-4 h-4 text-orange-500" />
                 لیست گام‌ها
               </h2>
               <div className="space-y-4">
                 {state.steps.map((step, idx) => (
-                  <div key={step.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                  <div key={step.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:border-slate-400 hover:shadow-md transition-all">
                     <div className="bg-slate-50 px-3 py-2 flex items-center justify-between border-b">
-                      <span className="text-xs font-bold text-slate-500 uppercase">{step.type}</span>
-                      <div className="flex gap-1">
-                        <button onClick={() => moveStep(idx, 'up')} className="p-1 hover:bg-slate-200 rounded"><ChevronUp className="w-3 h-3" /></button>
-                        <button onClick={() => moveStep(idx, 'down')} className="p-1 hover:bg-slate-200 rounded"><ChevronDown className="w-3 h-3" /></button>
-                        <button onClick={() => removeStep(step.id)} className="p-1 hover:bg-red-50 text-red-500 rounded"><Trash2 className="w-3 h-3" /></button>
+                      <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">{step.type}</span>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => moveStep(idx, 'up')} className="p-1 hover:bg-slate-200 rounded-md text-slate-400 hover:text-slate-800 transition-colors"><ChevronUp className="w-4 h-4" /></button>
+                        <button onClick={() => moveStep(idx, 'down')} className="p-1 hover:bg-slate-200 rounded-md text-slate-400 hover:text-slate-800 transition-colors"><ChevronDown className="w-4 h-4" /></button>
+                        <button onClick={() => removeStep(step.id)} className="p-1 hover:bg-red-50 text-red-300 hover:text-red-600 rounded-md transition-colors"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
-                    <div className="p-3 space-y-2">
+                    <div className="p-4 space-y-3">
                       {step.type === 'message' && (
                         <>
                           <div className="flex flex-col gap-2">
                             <div className="flex gap-2 items-center">
-                              <select 
-                                className="text-xs border rounded p-1 w-1/2"
-                                value={step.from}
-                                onChange={(e) => updateStep(step.id, { from: e.target.value })}
-                              >
+                              <select className="text-sm border rounded-lg p-2 flex-1 bg-white font-bold" value={step.from} onChange={(e) => updateStep(step.id, { from: e.target.value })}>
                                 {state.participants.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                               </select>
-                              <span className="text-slate-400 text-xs font-bold">به</span>
-                              <select 
-                                className="text-xs border rounded p-1 w-1/2"
-                                value={step.to}
-                                onChange={(e) => updateStep(step.id, { to: e.target.value })}
-                              >
+                              <span className="text-slate-500 font-bold">←</span>
+                              <select className="text-sm border rounded-lg p-2 flex-1 bg-white font-bold" value={step.to} onChange={(e) => updateStep(step.id, { to: e.target.value })}>
                                 {state.participants.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                               </select>
                             </div>
-                            <select 
-                              className="w-full text-xs border rounded p-1"
-                              value={step.arrow}
-                              onChange={(e) => updateStep(step.id, { arrow: e.target.value as any })}
-                            >
-                              <option value="->>">خط ممتد (با سرپیکان)</option>
-                              <option value="->">خط ممتد (بدون سرپیکان)</option>
-                              <option value="-->>">خط‌چین (با سرپیکان)</option>
-                              <option value="-->">خط‌چین (بدون سرپیکان)</option>
-                              <option value="-x">خط ممتد (با علامت ضربدر)</option>
-                              <option value="--x">خط‌چین (با علامت ضربدر)</option>
-                              <option value="-)">خط ممتد (پیکان باز - ناهمگام)</option>
-                              <option value="--)">خط‌چین (پیکان باز - ناهمگام)</option>
+                            <select className="w-full text-sm border rounded-lg p-2 bg-white font-bold" value={step.arrow} onChange={(e) => updateStep(step.id, { arrow: e.target.value as any })}>
+                              <option value="->>">خط ممتد (پیکان)</option>
+                              <option value="->">خط ممتد</option>
+                              <option value="-->>">خط‌چین (پیکان)</option>
+                              <option value="-->">خط‌چین</option>
+                              <option value="-x">ضربدر ممتد</option>
+                              <option value="--x">ضربدر خط‌چین</option>
                             </select>
                           </div>
-                          <input 
-                            className="w-full text-sm border rounded px-2 py-1"
-                            placeholder="متن پیام..."
-                            value={step.text}
-                            onChange={(e) => updateStep(step.id, { text: e.target.value })}
-                          />
+                          <input className="w-full text-sm border rounded-lg px-3 py-2.5 font-bold" placeholder="پیام..." value={step.text} onChange={(e) => updateStep(step.id, { text: e.target.value })} />
                         </>
                       )}
-
                       {step.type === 'note' && (
                         <>
                           <div className="flex gap-2 items-center">
-                            <select 
-                              className="text-xs border rounded p-1 w-1/2"
-                              value={step.position}
-                              onChange={(e) => updateStep(step.id, { position: e.target.value as any })}
-                            >
-                              <option value="over">بر روی</option>
-                              <option value="left of">سمت چپ</option>
-                              <option value="right of">سمت راست</option>
+                            <select className="text-sm border rounded-lg p-2 flex-1 bg-white font-bold" value={step.position} onChange={(e) => updateStep(step.id, { position: e.target.value as any })}>
+                              <option value="over">روی</option>
+                              <option value="left of">چپِ</option>
+                              <option value="right of">راستِ</option>
                             </select>
-                            <select 
-                              className="text-xs border rounded p-1 w-1/2"
-                              value={step.actor}
-                              onChange={(e) => updateStep(step.id, { actor: e.target.value })}
-                            >
+                            <select className="text-sm border rounded-lg p-2 flex-1 bg-white font-bold" value={step.actor} onChange={(e) => updateStep(step.id, { actor: e.target.value })}>
                               {state.participants.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                             </select>
                           </div>
-                          <input 
-                            className="w-full text-sm border rounded px-2 py-1"
-                            placeholder="متن یادداشت..."
-                            value={step.text}
-                            onChange={(e) => updateStep(step.id, { text: e.target.value })}
-                          />
+                          <input className="w-full text-sm border rounded-lg px-3 py-2.5 font-bold" placeholder="متن یادداشت..." value={step.text} onChange={(e) => updateStep(step.id, { text: e.target.value })} />
                         </>
                       )}
-
                       {(['loop', 'alt', 'opt'].includes(step.type)) && (
-                        <input 
-                          className="w-full text-sm border rounded px-2 py-1"
-                          placeholder="توضیح بلوک..."
-                          value={step.text}
-                          onChange={(e) => updateStep(step.id, { text: e.target.value })}
-                        />
+                        <div className="space-y-2">
+                          <input className="w-full text-sm border rounded-lg px-3 py-2.5 font-bold bg-blue-50/30 border-blue-100" placeholder="توضیح بلوک..." value={step.text} onChange={(e) => updateStep(step.id, { text: e.target.value })} />
+                          <div className="text-[10px] text-blue-500 font-bold px-1">فراموش نکنید پس از اتمام گام‌های داخلی، دکمه «پایان» را بزنید.</div>
+                        </div>
                       )}
-
-                      {(step.type === 'activate' || step.type === 'deactivate') && (
-                        <select 
-                          className="w-full text-xs border rounded p-1"
-                          value={step.actor}
-                          onChange={(e) => updateStep(step.id, { actor: e.target.value })}
-                        >
+                      {step.type === 'else' && (
+                        <input className="w-full text-sm border rounded-lg px-3 py-2.5 font-bold bg-purple-50/30 border-purple-100" placeholder="شرط جایگزین..." value={step.text} onChange={(e) => updateStep(step.id, { text: e.target.value })} />
+                      )}
+                      {step.type === 'activate' || step.type === 'deactivate' ? (
+                        <select className="w-full text-sm border rounded-lg p-2.5 bg-white font-bold" value={step.actor} onChange={(e) => updateStep(step.id, { actor: e.target.value })}>
                           {state.participants.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                         </select>
-                      )}
-
+                      ) : null}
                       {step.type === 'end' && (
-                        <p className="text-xs text-slate-400 text-center italic">پایان بلوک فعلی</p>
+                        <p className="text-sm text-slate-500 text-center font-bold py-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">بستن بلوک (End)</p>
                       )}
                     </div>
                   </div>
                 ))}
-
+                
                 {state.steps.length === 0 && (
-                  <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
-                    <p className="text-slate-400 text-sm">هنوز گامی اضافه نکرده‌اید</p>
+                   <div className="text-center py-20 border-2 border-dashed border-slate-100 rounded-[2rem] bg-slate-50/50">
+                    <p className="text-slate-400 text-sm px-10 leading-relaxed font-bold">
+                      لیست گام‌ها خالی است. <br/> از نوار ابزار سمت راست دستور جدید اضافه کنید.
+                    </p>
                   </div>
                 )}
               </div>
@@ -470,49 +455,54 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Preview Panel */}
-        <div className="flex-1 flex flex-col bg-slate-100 p-8 overflow-hidden">
-          <div className="flex gap-4 mb-4">
+        {/* Preview Panel with Zoom Logic */}
+        <div className="flex-1 flex flex-col bg-slate-100 p-6 overflow-hidden relative">
+          <div className="flex gap-3 mb-4">
             <button 
               onClick={() => setActiveTab('editor')}
-              className={`px-4 py-2 rounded-lg font-bold transition-all ${activeTab === 'editor' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border'}`}
+              className={`px-6 py-2.5 rounded-2xl text-sm font-bold transition-all shadow-sm ${activeTab === 'editor' ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}
             >
-              پیش‌نمایش بصری
+              پیش‌نمایش دیاگرام
             </button>
             <button 
               onClick={() => setActiveTab('preview')}
-              className={`px-4 py-2 rounded-lg font-bold transition-all ${activeTab === 'preview' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border'}`}
+              className={`px-6 py-2.5 rounded-2xl text-sm font-bold transition-all shadow-sm ${activeTab === 'preview' ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}
             >
-              مشاهده کد Mermaid
+              کد Mermaid
             </button>
             <div className="flex-1" />
-            <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-lg border text-sm text-slate-600">
-              <input 
-                type="checkbox" 
-                id="autonumber"
-                checked={state.autoNumber}
-                onChange={(e) => setState(prev => ({ ...prev, autoNumber: e.target.checked }))}
-              />
-              <label htmlFor="autonumber" className="cursor-pointer select-none">شماره‌گذاری خودکار</label>
+            <div className="flex items-center gap-3 bg-white px-5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-700 shadow-sm">
+              <input type="checkbox" id="autonumber" className="w-4 h-4 text-blue-600 cursor-pointer" checked={state.autoNumber} onChange={(e) => setState(prev => ({ ...prev, autoNumber: e.target.checked }))} />
+              <label htmlFor="autonumber" className="cursor-pointer select-none font-bold">شماره‌گذاری</label>
             </div>
           </div>
 
-          <div className="flex-1 bg-white rounded-2xl shadow-xl overflow-auto border border-slate-200 relative flex items-center justify-center">
+          <div className="flex-1 bg-white rounded-[2rem] shadow-2xl overflow-auto border border-slate-200 relative min-h-0">
             {activeTab === 'editor' ? (
-              <div 
-                className="w-full h-full p-8 flex items-center justify-center"
-                dangerouslySetInnerHTML={{ __html: previewSvg }}
-              />
+              <div className="min-w-full min-h-full flex flex-col items-center p-12 relative overflow-visible">
+                {/* Zoom Controls Overlay */}
+                <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-white/95 backdrop-blur-md border border-slate-200 p-1.5 rounded-2xl shadow-2xl transition-all hover:scale-105">
+                  <button onClick={() => handleZoom(-0.1)} className="p-2.5 hover:bg-slate-100 text-slate-600 rounded-xl transition-colors" title="کوچک‌نمایی"><ZoomOut className="w-5 h-5" /></button>
+                  <div className="px-3 text-xs font-bold text-slate-700 min-w-[50px] text-center border-x border-slate-100 select-none">
+                    {Math.round(zoomLevel * 100)}%
+                  </div>
+                  <button onClick={() => handleZoom(0.1)} className="p-2.5 hover:bg-slate-100 text-slate-600 rounded-xl transition-colors" title="بزرگنمایی"><ZoomIn className="w-5 h-5" /></button>
+                  <button onClick={resetZoom} className="p-2.5 hover:bg-blue-50 text-blue-600 rounded-xl transition-colors" title="بازنشانی"><RotateCcw className="w-5 h-5" /></button>
+                </div>
+
+                <div 
+                  className="transition-transform duration-150 ease-out origin-top"
+                  style={{ transform: `scale(${zoomLevel})` }}
+                  dangerouslySetInnerHTML={{ __html: previewSvg }}
+                />
+              </div>
             ) : (
               <div className="w-full h-full relative group">
-                <button 
-                  onClick={copyInTab}
-                  className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-slate-800/80 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all backdrop-blur-sm opacity-0 group-hover:opacity-100 shadow-lg border border-slate-700"
-                >
-                  {codeTabCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  {codeTabCopied ? 'کپی شد' : 'کپی سریع'}
+                <button onClick={copyInTab} className="absolute top-8 left-8 z-30 flex items-center gap-2 bg-slate-800/95 hover:bg-slate-900 text-white px-5 py-2.5 rounded-2xl text-xs font-bold transition-all opacity-0 group-hover:opacity-100 shadow-2xl border border-slate-700">
+                  {codeTabCopied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                  {codeTabCopied ? 'کپی شد' : 'کپی سریع کد'}
                 </button>
-                <pre className="w-full h-full p-8 text-sm font-mono text-slate-800 bg-slate-900 text-blue-300 overflow-auto whitespace-pre-wrap selection:bg-blue-500/30">
+                <pre className="w-full h-full p-10 text-sm font-mono text-slate-800 bg-slate-900 text-blue-100 overflow-auto whitespace-pre-wrap leading-relaxed select-all">
                   {mermaidCode}
                 </pre>
               </div>
@@ -523,91 +513,22 @@ const App: React.FC = () => {
 
       {/* Help Modal */}
       {showHelp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden">
             <div className="p-6 border-b flex items-center justify-between bg-slate-50">
-              <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+              <h2 className="text-xl font-bold flex items-center gap-3 text-slate-800">
                 <HelpCircle className="w-6 h-6 text-blue-600" />
-                راهنمای استفاده از ابزار
+                راهنمای طراحی دیاگرام
               </h2>
-              <button 
-                onClick={() => setShowHelp(false)}
-                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
-              >
-                <X className="w-6 h-6 text-slate-500" />
-              </button>
+              <button onClick={() => setShowHelp(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X className="w-7 h-7 text-slate-400" /></button>
             </div>
-            <div className="p-8 overflow-y-auto space-y-8 text-slate-700 leading-relaxed">
-              <section>
-                <h3 className="text-lg font-bold text-blue-700 mb-3 border-b pb-2">نحوه شروع کار</h3>
-                <p>این ابزار به شما کمک می‌کند بدون نوشتن حتی یک خط کد، دیاگرام‌های توالی (Sequence Diagrams) استاندارد Mermaid.js بسازید.</p>
-                <ul className="list-disc list-inside mt-3 space-y-1 mr-4">
-                  <li>ابتدا شرکت‌کنندگان (Participants) یا بازیگران (Actors) خود را در ستون سمت چپ تعریف کنید.</li>
-                  <li>سپس با استفاده از دکمه‌های بخش "افزودن دستور جدید"، مراحل مختلف دیاگرام را اضافه کنید.</li>
-                  <li>هر مرحله اضافه شده را می‌توانید با کلیک بر روی آن ویرایش کرده یا ترتیب آن‌ها را جابجا کنید.</li>
-                </ul>
-              </section>
-
-              <section>
-                <h3 className="text-lg font-bold text-blue-700 mb-3 border-b pb-2">آشنایی با دستورات</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-slate-50 p-4 rounded-xl border">
-                    <h4 className="font-bold flex items-center gap-2 mb-2 text-slate-800">
-                      <MessageSquare className="w-4 h-4 text-green-600" />
-                      پیام (Message)
-                    </h4>
-                    <p className="text-sm">ارسال پیام بین دو شرکت‌کننده. می‌توانید نوع خط (ممتد یا نقطه‌چین) و نوع پیکان را انتخاب کنید.</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl border">
-                    <h4 className="font-bold flex items-center gap-2 mb-2 text-slate-800">
-                      <StickyNote className="w-4 h-4 text-yellow-600" />
-                      یادداشت (Note)
-                    </h4>
-                    <p className="text-sm">اضافه کردن توضیحات اضافی در سمت چپ، راست یا روی یک بازیگر خاص.</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl border">
-                    <h4 className="font-bold flex items-center gap-2 mb-2 text-slate-800">
-                      <RefreshCw className="w-4 h-4 text-blue-600" />
-                      حلقه (Loop)
-                    </h4>
-                    <p className="text-sm">برای نمایش تکرار یک فرآیند. فراموش نکنید که در پایان مراحل حلقه، دستور "پایان بلوک" را اضافه کنید.</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl border">
-                    <h4 className="font-bold flex items-center gap-2 mb-2 text-slate-800">
-                      <Code className="w-4 h-4 text-purple-600" />
-                      شرط (Alt/Opt)
-                    </h4>
-                    <p className="text-sm"><strong>Alt:</strong> برای نمایش مسیرهای جایگزین (if/else).<br/><strong>Opt:</strong> برای نمایش یک مسیر اختیاری (optional).</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl border">
-                    <h4 className="font-bold flex items-center gap-2 mb-2 text-slate-800">
-                      <Play className="w-4 h-4 text-orange-600" />
-                      فعال‌سازی (Activation)
-                    </h4>
-                    <p className="text-sm">نمایش نوار عمودی روی خط زندگی (Lifeline) یک بازیگر برای نشان دادن درگیری فعال او در فرآیند.</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl border">
-                    <h4 className="font-bold flex items-center gap-2 mb-2 text-slate-800">
-                      <Trash2 className="w-4 h-4 text-red-600" />
-                      پایان بلوک (End)
-                    </h4>
-                    <p className="text-sm">این دستور برای بستن بلوک‌های Loop، Alt و Opt ضروری است.</p>
-                  </div>
-                </div>
-              </section>
-
-              <section className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
-                <h3 className="text-lg font-bold text-blue-800 mb-2">خروجی گرفتن</h3>
-                <p className="text-sm">شما می‌توانید در هر لحظه با رفتن به تب "مشاهده کد Mermaid"، کد تولید شده را کپی کرده و در ابزارهای دیگر (مثل GitHub، Notion یا Obsidian) استفاده کنید. همچنین امکان دانلود فایل با پسوند .mmd فراهم شده است.</p>
-              </section>
+            <div className="p-10 overflow-y-auto space-y-8 text-sm text-slate-700 text-right">
+              <section><h3 className="font-bold text-blue-700 mb-2 border-r-4 border-blue-500 pr-3">افزودن دستور جدید</h3><p>از نوار ابزار سمت راست برای اضافه کردن گام‌های جدید استفاده کنید.</p></section>
+              <section className="bg-blue-50 p-6 rounded-3xl"><h3 className="font-bold text-blue-800 mb-2">پیش‌نمایش هوشمند</h3><p>حتی اگر فراموش کنید بلوک‌های حلقه (Loop) یا شرط (Alt) را ببندید، سیستم به صورت هوشمند پیش‌نمایش را به شما نشان می‌دهد تا روند طراحی مختل نشود.</p></section>
+              <section><h3 className="font-bold text-slate-700 mb-2 border-r-4 border-slate-400 pr-3">خروجی کد</h3><p>پس از اتمام طراحی، می‌توانید کد را کپی کرده یا دیاگرام را دانلود کنید.</p></section>
             </div>
             <div className="p-6 bg-slate-50 border-t flex justify-end">
-              <button 
-                onClick={() => setShowHelp(false)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg font-bold transition-colors shadow-md"
-              >
-                فهمیدم
-              </button>
+              <button onClick={() => setShowHelp(false)} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 rounded-2xl font-bold text-base">متوجه شدم</button>
             </div>
           </div>
         </div>
@@ -616,21 +537,22 @@ const App: React.FC = () => {
   );
 };
 
-interface ToolButtonProps {
+interface ToolActionProps {
   icon: React.ReactNode;
   label: string;
+  color: string;
   onClick: () => void;
 }
 
-const ToolButton: React.FC<ToolButtonProps> = ({ icon, label, onClick }) => (
-  <button 
-    onClick={onClick}
-    className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all text-slate-600 hover:text-blue-600 group"
-  >
-    <div className="p-2 bg-slate-100 group-hover:bg-blue-100 rounded-lg transition-colors">
-      {icon}
+const ToolAction: React.FC<ToolActionProps> = ({ icon, label, color, onClick }) => (
+  <button onClick={onClick} className="flex flex-col items-center group relative w-full px-1">
+    <div className={`p-2 rounded-xl transition-all duration-300 group-hover:scale-110 shadow-sm ${color} text-white`}>
+      {React.cloneElement(icon as React.ReactElement, { className: 'w-4 h-4' })}
     </div>
-    <span className="text-xs font-bold">{label}</span>
+    <span className="text-[10px] text-slate-500 font-bold mt-1 group-hover:text-slate-800 transition-colors tracking-tighter">{label}</span>
+    <div className="absolute right-full mr-4 px-3 py-2 bg-slate-800 text-white text-xs rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all translate-x-3 group-hover:translate-x-0 whitespace-nowrap z-50 border border-slate-700 font-bold">
+      افزودن {label}
+    </div>
   </button>
 );
 
