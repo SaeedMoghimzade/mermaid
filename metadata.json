@@ -1,0 +1,5 @@
+{
+  "name": "Mermaid Sequence Builder",
+  "description": "A visual tool to build Mermaid sequence diagrams without writing code. Add participants, messages, and blocks through an intuitive UI and export the generated Mermaid.js code.",
+  "requestFramePermissions": []
+}
