@@ -25,7 +25,8 @@ import {
   Split,
   Info,
   ArrowRightLeft,
-  Activity
+  Activity,
+  GripVertical
 } from 'lucide-react';
 import mermaid from 'mermaid';
 import { Participant, DiagramStep, DiagramState, StepType } from './types';
@@ -56,6 +57,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [showHelp, setShowHelp] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
   
   const [isParticipantsOpen, setIsParticipantsOpen] = useState(true);
   const [isStepsOpen, setIsStepsOpen] = useState(true);
@@ -192,13 +194,33 @@ const App: React.FC = () => {
     }));
   };
 
-  const moveStep = (index: number, direction: 'up' | 'down') => {
-    const newSteps = [...state.steps];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex >= 0 && targetIndex < newSteps.length) {
-      [newSteps[index], newSteps[targetIndex]] = [newSteps[targetIndex], newSteps[index]];
-      setState(prev => ({ ...prev, steps: newSteps }));
+  // Drag and Drop Handlers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedStepIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedStepIndex === null || draggedStepIndex === index) return;
+    
+    // Smoothly swap elements in a temporary visual list (optional enhancement)
+    // but for simplicity we'll just handle on drop for stability.
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggedStepIndex === null || draggedStepIndex === targetIndex) {
+      setDraggedStepIndex(null);
+      return;
     }
+
+    const updatedSteps = [...state.steps];
+    const [draggedItem] = updatedSteps.splice(draggedStepIndex, 1);
+    updatedSteps.splice(targetIndex, 0, draggedItem);
+
+    setState(prev => ({ ...prev, steps: updatedSteps }));
+    setDraggedStepIndex(null);
   };
 
   const handleZoom = (delta: number) => setZoomLevel(prev => Math.min(Math.max(0.1, prev + delta), 4));
@@ -282,13 +304,23 @@ const App: React.FC = () => {
             <h2 className="text-sm font-bold mb-6 flex items-center gap-2 text-slate-700 uppercase tracking-wider"><ListTree className="w-4 h-4 text-orange-500" />لیست گام‌ها</h2>
             <div className="space-y-4 overflow-y-auto flex-1 no-scrollbar pb-10">
               {state.steps.map((step, idx) => (
-                <div key={step.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:border-slate-300 transition-all">
+                <div 
+                  key={step.id} 
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, idx)}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  className={`bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:border-blue-300 transition-all cursor-default relative group ${draggedStepIndex === idx ? 'opacity-40 grayscale scale-95' : ''}`}
+                >
                   <div className="bg-slate-50 px-3 py-1.5 flex items-center justify-between border-b">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">{step.type}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="cursor-grab active:cursor-grabbing p-1 hover:bg-slate-200 rounded-md text-slate-400 group-hover:text-blue-500 transition-colors">
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">{step.type}</span>
+                    </div>
                     <div className="flex gap-1">
-                      <button onClick={() => moveStep(idx, 'up')} className="p-1 hover:bg-slate-200 rounded-md text-slate-400"><ChevronUp className="w-3 h-3" /></button>
-                      <button onClick={() => moveStep(idx, 'down')} className="p-1 hover:bg-slate-200 rounded-md text-slate-400"><ChevronDown className="w-3 h-3" /></button>
-                      <button onClick={() => removeStep(step.id)} className="p-1 hover:bg-red-50 text-red-300 hover:text-red-500 rounded-md"><Trash2 className="w-3 h-3" /></button>
+                      <button onClick={() => removeStep(step.id)} className="p-1 hover:bg-red-50 text-red-300 hover:text-red-500 rounded-md transition-colors"><Trash2 className="w-3 h-3" /></button>
                     </div>
                   </div>
                   <div className="p-3 space-y-2">
@@ -496,7 +528,7 @@ const App: React.FC = () => {
               <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100 text-sm">
                 <h4 className="font-bold text-blue-800 mb-2 flex items-center gap-2"><Info className="w-4 h-4" /> نکات تکمیلی:</h4>
                 <ul className="list-disc pr-5 space-y-1">
-                  <li>برای جابجا کردن گام‌ها، از دکمه‌های فلش در لیست سمت چپ استفاده کنید.</li>
+                  <li>برای جابجا کردن گام‌ها، از <b>دستگیره (Grip)</b> کنار هر کارت استفاده کنید و آن را بکشید.</li>
                   <li>در صورت بروز خطا در پیش‌نمایش، مطمئن شوید تمام بلوک‌های Alt یا Loop را با یک <b>End</b> بسته‌اید.</li>
                   <li>کد Mermaid تولید شده را می‌توانید مستقیماً در اسناد Markdown یا ابزارهایی مانند Notion و GitHub قرار دهید.</li>
                 </ul>
