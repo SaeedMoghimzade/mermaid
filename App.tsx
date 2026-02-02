@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -33,10 +33,13 @@ import { Participant, DiagramStep, DiagramState, StepType } from './types';
 
 // Initialize Mermaid
 mermaid.initialize({
-  startOnLoad: true,
+  startOnLoad: false,
   theme: 'default',
   securityLevel: 'loose',
-  fontFamily: 'Vazirmatn'
+  fontFamily: 'Vazirmatn',
+  sequence: {
+    useMaxWidth: false, // Prevent Mermaid from forcing 100% width
+  }
 });
 
 const App: React.FC = () => {
@@ -61,6 +64,8 @@ const App: React.FC = () => {
   
   const [isParticipantsOpen, setIsParticipantsOpen] = useState(true);
   const [isStepsOpen, setIsStepsOpen] = useState(true);
+
+  const previewContainerRef = useRef<HTMLDivElement>(null);
 
   const getSafeId = (id: string) => `act_${id}`;
 
@@ -202,10 +207,6 @@ const App: React.FC = () => {
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (draggedStepIndex === null || draggedStepIndex === index) return;
-    
-    // Smoothly swap elements in a temporary visual list (optional enhancement)
-    // but for simplicity we'll just handle on drop for stability.
   };
 
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
@@ -387,7 +388,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex-1 flex flex-col bg-slate-100 p-6 overflow-hidden relative">
-          <div className="flex gap-3 mb-4">
+          <div className="flex gap-3 mb-4 flex-shrink-0">
             <button onClick={() => setActiveTab('editor')} className={`px-6 py-2.5 rounded-2xl text-sm font-bold transition-all shadow-sm ${activeTab === 'editor' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>پیش‌نمایش دیاگرام</button>
             <button onClick={() => setActiveTab('preview')} className={`px-6 py-2.5 rounded-2xl text-sm font-bold transition-all shadow-sm ${activeTab === 'preview' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>کد Mermaid</button>
             <div className="flex-1" />
@@ -397,16 +398,31 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex-1 bg-white rounded-[2rem] shadow-2xl overflow-auto border border-slate-200 relative min-h-0">
+          <div className="flex-1 bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 relative min-h-0">
             {activeTab === 'editor' ? (
-              <div className="min-w-full min-h-full flex flex-col items-center p-12 relative overflow-visible">
+              <div 
+                ref={previewContainerRef}
+                className="w-full h-full overflow-auto bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:24px_24px] relative"
+              >
+                {/* Floating Controls */}
                 <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-white/95 backdrop-blur-md border border-slate-200 p-1.5 rounded-2xl shadow-2xl transition-all hover:scale-105">
                   <button onClick={() => handleZoom(-0.1)} className="p-2.5 hover:bg-slate-100 text-slate-600 rounded-xl transition-colors"><ZoomOut className="w-5 h-5" /></button>
                   <div className="px-3 text-xs font-bold text-slate-700 min-w-[50px] text-center border-x border-slate-100 select-none">{Math.round(zoomLevel * 100)}%</div>
                   <button onClick={() => handleZoom(0.1)} className="p-2.5 hover:bg-slate-100 text-slate-600 rounded-xl transition-colors"><ZoomIn className="w-5 h-5" /></button>
                   <button onClick={() => setZoomLevel(1)} className="p-2.5 hover:bg-blue-50 text-blue-600 rounded-xl transition-colors"><RotateCcw className="w-5 h-5" /></button>
                 </div>
-                <div className="transition-transform duration-150 ease-out origin-top" style={{ transform: `scale(${zoomLevel})` }} dangerouslySetInnerHTML={{ __html: previewSvg }} />
+
+                {/* Diagram Canvas Wrapper for Centering */}
+                <div className="min-w-full min-h-full grid place-items-center p-20">
+                    <div 
+                      className="transition-transform duration-200 ease-out origin-top"
+                      style={{ 
+                        transform: `scale(${zoomLevel})`
+                      }}
+                    >
+                      <div className="mermaid inline-block" dangerouslySetInnerHTML={{ __html: previewSvg }} />
+                    </div>
+                </div>
               </div>
             ) : (
               <div className="w-full h-full relative group">
@@ -414,14 +430,14 @@ const App: React.FC = () => {
                   {codeTabCopied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                   {codeTabCopied ? 'کپی شد' : 'کپی سریع کد'}
                 </button>
-                <pre className="w-full h-full p-10 text-sm font-mono text-slate-800 bg-slate-900 text-blue-100 overflow-auto whitespace-pre-wrap leading-relaxed select-all">{mermaidCode}</pre>
+                <pre className="w-full h-full p-10 text-sm font-mono text-slate-800 bg-slate-900 text-blue-100 overflow-auto whitespace-pre-wrap leading-relaxed select-all no-scrollbar">{mermaidCode}</pre>
               </div>
             )}
           </div>
         </div>
       </main>
 
-      {/* Enhanced Help Modal */}
+      {/* Help Modal */}
       {showHelp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -485,7 +501,6 @@ const App: React.FC = () => {
                   <Code className="w-5 h-5 text-purple-600" />
                   منطق و کنترل جریان
                 </h3>
-                <p className="text-sm opacity-80 mb-2">این ابزارها برای مدیریت پیچیدگی و شرایط در دیاگرام هستند:</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-medium">
                   <div className="flex items-center gap-3 p-3 border border-purple-100 rounded-xl">
                     <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><RefreshCw className="w-4 h-4" /></div>
@@ -529,8 +544,8 @@ const App: React.FC = () => {
                 <h4 className="font-bold text-blue-800 mb-2 flex items-center gap-2"><Info className="w-4 h-4" /> نکات تکمیلی:</h4>
                 <ul className="list-disc pr-5 space-y-1">
                   <li>برای جابجا کردن گام‌ها، از <b>دستگیره (Grip)</b> کنار هر کارت استفاده کنید و آن را بکشید.</li>
+                  <li>بخش پیش‌نمایش اکنون قابلیت <b>اسکرول افقی و عمودی</b> دارد تا در دیاگرام‌های بزرگ، متن‌ها به خوبی در مرکز قرار گیرند.</li>
                   <li>در صورت بروز خطا در پیش‌نمایش، مطمئن شوید تمام بلوک‌های Alt یا Loop را با یک <b>End</b> بسته‌اید.</li>
-                  <li>کد Mermaid تولید شده را می‌توانید مستقیماً در اسناد Markdown یا ابزارهایی مانند Notion و GitHub قرار دهید.</li>
                 </ul>
               </div>
 
@@ -554,7 +569,7 @@ interface ToolActionProps {
 }
 
 const ToolAction: React.FC<ToolActionProps> = ({ icon, label, color, onClick }) => (
-  <button onClick={onClick} className="flex flex-col items-center group relative w-full px-1">
+  <button onClick={onClick} className="flex flex-col items-center group relative w-full px-1 flex-shrink-0">
     <div className={`p-2 rounded-xl transition-all duration-300 group-hover:scale-110 shadow-sm ${color} text-white`}>
       {React.cloneElement(icon as React.ReactElement, { className: 'w-4 h-4' })}
     </div>
